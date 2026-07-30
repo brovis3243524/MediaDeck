@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLineEdit, QLabel, QSlider, QFrame, QScrollArea,
     QGridLayout, QButtonGroup, QGraphicsDropShadowEffect, QComboBox,
-    QFileDialog
+    QFileDialog, QMessageBox
 )
 from PyQt6.QtCore import (
     Qt, QThread, pyqtSignal, QUrl, QTimer, QDateTime, pyqtProperty,
@@ -840,6 +840,7 @@ class SteamOSMediaPlayer(QMainWindow):
 
         self.shuffle_btn.setStyleSheet(f"QPushButton {{ background-color: {t['bg_card']}; color: {t['text']}; border: 1px solid {t['border']}; border-radius: 14px; padding: 6px 12px; font-weight: bold; }} QPushButton:hover {{ background-color: {t['accent']}; color: white; }}")
         self.import_json_btn.setStyleSheet(f"QPushButton {{ background-color: {t['bg_card']}; color: {t['text']}; border: 1px solid {t['border']}; border-radius: 14px; padding: 6px 12px; font-weight: bold; }} QPushButton:hover {{ background-color: {t['accent']}; color: white; }}")
+        self.clear_all_btn.setStyleSheet(f"QPushButton {{ background-color: {t['bg_card']}; color: #ff4757; border: 1px solid {t['border']}; border-radius: 14px; padding: 6px 12px; font-weight: bold; }} QPushButton:hover {{ background-color: #ff4757; color: white; }}")
         self.import_btn.setStyleSheet(f"QPushButton {{ background-color: {t['accent']}; color: white; border-radius: 14px; padding: 8px 18px; font-weight: bold; border: none; }} QPushButton:hover {{ background-color: {t['accent_hover']}; }}")
 
         self.tabs_frame.setStyleSheet(f"background-color: {t['bg_sub']}; border-bottom: 1px solid {t['border']};")
@@ -964,6 +965,58 @@ class SteamOSMediaPlayer(QMainWindow):
                     if isinstance(data, list) and len(data) > 0: self.playlist_groups = data
             except Exception: pass
 
+    def clear_all_data(self):
+        confirm = QMessageBox.question(
+            self,
+            "Clear All Data",
+            "Are you sure you want to delete all saved playlists, cached audio, and thumbnails?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        # 1. Stop playback & turntable
+        self.media_player.stop()
+        self.turntable.set_playing(False)
+        self.turntable.set_art(QPixmap())
+
+        # 2. Delete saved JSON playlist file
+        if os.path.exists(SAVE_FILE):
+            try:
+                os.remove(SAVE_FILE)
+            except Exception as e:
+                print(f"Error removing save file: {e}")
+
+        # 3. Clear audio cache & thumbnail cache
+        if os.path.exists(CACHE_DIR):
+            for filename in os.listdir(CACHE_DIR):
+                file_path = os.path.join(CACHE_DIR, filename)
+                try:
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+                except Exception as e:
+                    print(f"Error removing cache file: {e}")
+
+        # 4. Reset internal state
+        self.playlist_groups = []
+        self.collapsed_playlists.clear()
+        self.current_group_idx = 0
+        self.current_track_idx = 0
+        self.track_duration = 0
+
+        # 5. Reset UI components
+        self.search_box.clear()
+        self.url_input.clear()
+        self.timeline_slider.setValue(0)
+        self.time_current_label.setText("00:00")
+        self.time_total_label.setText("00:00")
+        self.now_playing_label.setText("ALL DATA CLEARED")
+
+        # 6. Redraw empty grid
+        self.refresh_grid()
+
     def import_json_file(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Import Playlist JSON", CONFIG_DIR, "JSON Files (*.json)")
         if file_path:
@@ -1027,6 +1080,10 @@ class SteamOSMediaPlayer(QMainWindow):
         self.import_json_btn = QPushButton("📁 JSON")
         self.import_json_btn.clicked.connect(self.import_json_file)
         h_layout.addWidget(self.import_json_btn)
+
+        self.clear_all_btn = QPushButton("🗑️ Clear All")
+        self.clear_all_btn.clicked.connect(self.clear_all_data)
+        h_layout.addWidget(self.clear_all_btn)
 
         self.url_input = QLineEdit()
         self.url_input.setPlaceholderText("📥 Paste SoundCloud / YouTube URL...")
